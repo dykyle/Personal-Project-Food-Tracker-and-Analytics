@@ -17,28 +17,44 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state
+# Initialize session state - FIXED FOR STREAMLIT CLOUD
 if 'food_log' not in st.session_state:
-    if os.path.exists('food_log.json'):
-        with open('food_log.json', 'r') as f:
-            st.session_state.food_log = json.load(f)
-    else:
+    try:
+        # Try to load existing data, but handle cases where file doesn't exist or is empty
+        if os.path.exists('food_log.json'):
+            with open('food_log.json', 'r') as f:
+                file_content = f.read().strip()
+                if file_content:  # Check if file is not empty
+                    st.session_state.food_log = json.loads(file_content)
+                else:
+                    st.session_state.food_log = []
+        else:
+            st.session_state.food_log = []
+    except (json.JSONDecodeError, Exception):
+        # If there's any error reading the file, start fresh
         st.session_state.food_log = []
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Dashboard"
 
-# All your existing functions remain the same...
+# Fixed save function for Streamlit Cloud
 def save_data():
-    """Save data to JSON file"""
-    with open('food_log.json', 'w') as f:
-        json.dump(st.session_state.food_log, f, indent=2)
+    """Save data to JSON file - with error handling"""
+    try:
+        with open('food_log.json', 'w') as f:
+            json.dump(st.session_state.food_log, f, indent=2)
+    except Exception as e:
+        # If saving fails, just continue - data is still in session state
+        pass
 
 def clear_all_entries():
     """Clear all food entries"""
     st.session_state.food_log = []
-    if os.path.exists('food_log.json'):
-        os.remove('food_log.json')
+    try:
+        if os.path.exists('food_log.json'):
+            os.remove('food_log.json')
+    except:
+        pass  # If file deletion fails, continue anyway
     st.success("All entries cleared successfully!")
     st.rerun()
 
