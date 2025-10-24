@@ -1,60 +1,28 @@
 import streamlit as st
 import datetime
-import json
 import pandas as pd
-import os
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 import io
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Page configuration - WIDER LAYOUT
+# Page configuration
 st.set_page_config(
     page_title="Food Tracker",
     page_icon="🍕",
     layout="wide"
 )
 
-# Initialize session state - FIXED FOR STREAMLIT CLOUD
+# Initialize session state - NO FILE SAVING
 if 'food_log' not in st.session_state:
-    try:
-        # Try to load existing data, but handle cases where file doesn't exist or is empty
-        if os.path.exists('food_log.json'):
-            with open('food_log.json', 'r') as f:
-                file_content = f.read().strip()
-                if file_content:  # Check if file is not empty
-                    st.session_state.food_log = json.loads(file_content)
-                else:
-                    st.session_state.food_log = []
-        else:
-            st.session_state.food_log = []
-    except (json.JSONDecodeError, Exception):
-        # If there's any error reading the file, start fresh
-        st.session_state.food_log = []
+    st.session_state.food_log = []
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Dashboard"
 
-# Fixed save function for Streamlit Cloud
-def save_data():
-    """Save data to JSON file - with error handling"""
-    try:
-        with open('food_log.json', 'w') as f:
-            json.dump(st.session_state.food_log, f, indent=2)
-    except Exception as e:
-        # If saving fails, just continue - data is still in session state
-        pass
-
+# Remove all file operations - use session state only
 def clear_all_entries():
     """Clear all food entries"""
     st.session_state.food_log = []
-    try:
-        if os.path.exists('food_log.json'):
-            os.remove('food_log.json')
-    except:
-        pass  # If file deletion fails, continue anyway
     st.success("All entries cleared successfully!")
     st.rerun()
 
@@ -62,7 +30,6 @@ def delete_entry(entry_index):
     """Delete a specific entry"""
     if 0 <= entry_index < len(st.session_state.food_log):
         deleted_entry = st.session_state.food_log.pop(entry_index)
-        save_data()
         st.success(f"Deleted entry: {deleted_entry['food']}")
         st.rerun()
 
@@ -70,13 +37,18 @@ def edit_entry(entry_index, new_entry):
     """Edit a specific entry"""
     if 0 <= entry_index < len(st.session_state.food_log):
         st.session_state.food_log[entry_index] = new_entry
-        save_data()
         st.success("Entry updated successfully!")
         st.rerun()
 
 def create_pdf_report():
     """Create a PDF download of all food entries"""
     buffer = io.BytesIO()
+    
+    # For now, let's simplify PDF creation since reportlab might have issues on Cloud
+    # We'll create a basic text-based PDF
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
@@ -86,35 +58,21 @@ def create_pdf_report():
     c.setFont("Helvetica", 12)
     c.drawString(100, height - 130, f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     
-    # Table headers
+    # Simple data listing
     y_position = height - 170
-    headers = ["Date", "Category", "Food", "Beverage", "Protein (g)"]
-    col_positions = [50, 120, 220, 350, 450]
-    
     c.setFont("Helvetica-Bold", 10)
-    for i, header in enumerate(headers):
-        c.drawString(col_positions[i], y_position, header)
-    
+    c.drawString(100, y_position, "Your Food Entries:")
     y_position -= 20
     
-    # Data rows
     c.setFont("Helvetica", 9)
     for entry in st.session_state.food_log:
-        if y_position < 100:  # New page if needed
+        if y_position < 100:
             c.showPage()
             y_position = height - 100
-            # Redraw headers on new page
-            c.setFont("Helvetica-Bold", 10)
-            for i, header in enumerate(headers):
-                c.drawString(col_positions[i], y_position, header)
-            y_position -= 20
             c.setFont("Helvetica", 9)
         
-        c.drawString(col_positions[0], y_position, entry['date'])
-        c.drawString(col_positions[1], y_position, entry['category'])
-        c.drawString(col_positions[2], y_position, entry['food'][:30])
-        c.drawString(col_positions[3], y_position, entry['beverage'][:20])
-        c.drawString(col_positions[4], y_position, str(entry.get('protein', 0)))
+        entry_text = f"{entry['date']} - {entry['category']}: {entry['food']} | {entry['beverage']} | {entry.get('protein', 0)}g protein"
+        c.drawString(100, y_position, entry_text[:80])  # Limit length
         y_position -= 15
     
     c.save()
@@ -356,7 +314,6 @@ elif current_page == "Add Entry":
                     }
                     
                     st.session_state.food_log.append(new_entry)
-                    save_data()
                     st.success("✅ Entry added successfully!")
                     st.balloons()
                 else:
