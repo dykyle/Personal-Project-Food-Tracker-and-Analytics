@@ -71,7 +71,7 @@ You can easily modify:
    git clone [https://github.com/dykyle/food-tracker.git](https://github.com/dykyle/Personal-Project-Food-Tracker-and-Analytics.git)
    cd food-tracker
 
-2. **Create a virtual environment (recommended)
+2. **Create a virtual environment (recommended)**
    ```bash
    python -m venv
    source venv/bin/activate   # On Windows: venv\Scripts\activate
