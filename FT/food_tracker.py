@@ -4,6 +4,10 @@ import pandas as pd
 import io
 import plotly.express as px
 import plotly.graph_objects as go
+import sqlite3
+import os
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 # Page configuration
 st.set_page_config(
@@ -12,43 +16,93 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize session state - NO FILE SAVING
-if 'food_log' not in st.session_state:
-    st.session_state.food_log = []
+# Database setup
+def init_db():
+    """Initialize SQLite database"""
+    conn = sqlite3.connect('food_tracker.db', check_same_thread=False)
+    c = conn.cursor()
+    
+    # Create table if it doesn't exist
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS food_entries
+        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+         date TEXT NOT NULL,
+         category TEXT NOT NULL,
+         food TEXT NOT NULL,
+         beverage TEXT NOT NULL,
+         protein INTEGER DEFAULT 0,
+         notes TEXT,
+         created_at TEXT)
+    ''')
+    
+    conn.commit()
+    return conn
 
+# Initialize database
+conn = init_db()
+
+# Database functions
+def get_all_entries():
+    """Get all food entries from database"""
+    c = conn.cursor()
+    c.execute('SELECT * FROM food_entries ORDER BY date DESC, created_at DESC')
+    entries = c.fetchall()
+    
+    # Convert to list of dictionaries
+    result = []
+    for entry in entries:
+        result.append({
+            'id': entry[0],
+            'date': entry[1],
+            'category': entry[2],
+            'food': entry[3],
+            'beverage': entry[4],
+            'protein': entry[5],
+            'notes': entry[6],
+            'created_at': entry[7]
+        })
+    return result
+
+def add_entry(entry):
+    """Add a new entry to database"""
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO food_entries (date, category, food, beverage, protein, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (entry['date'], entry['category'], entry['food'], entry['beverage'], 
+          entry['protein'], entry.get('notes', ''), entry['created_at']))
+    conn.commit()
+
+def update_entry(entry_id, entry):
+    """Update an existing entry"""
+    c = conn.cursor()
+    c.execute('''
+        UPDATE food_entries 
+        SET date=?, category=?, food=?, beverage=?, protein=?, notes=?
+        WHERE id=?
+    ''', (entry['date'], entry['category'], entry['food'], entry['beverage'],
+          entry['protein'], entry.get('notes', ''), entry_id))
+    conn.commit()
+
+def delete_entry(entry_id):
+    """Delete an entry from database"""
+    c = conn.cursor()
+    c.execute('DELETE FROM food_entries WHERE id=?', (entry_id,))
+    conn.commit()
+
+def clear_all_entries():
+    """Clear all entries from database"""
+    c = conn.cursor()
+    c.execute('DELETE FROM food_entries')
+    conn.commit()
+
+# Initialize session state for current page only
 if 'current_page' not in st.session_state:
     st.session_state.current_page = "Dashboard"
-
-# Remove all file operations - use session state only
-def clear_all_entries():
-    """Clear all food entries"""
-    st.session_state.food_log = []
-    st.success("All entries cleared successfully!")
-    st.rerun()
-
-def delete_entry(entry_index):
-    """Delete a specific entry"""
-    if 0 <= entry_index < len(st.session_state.food_log):
-        deleted_entry = st.session_state.food_log.pop(entry_index)
-        st.success(f"Deleted entry: {deleted_entry['food']}")
-        st.rerun()
-
-def edit_entry(entry_index, new_entry):
-    """Edit a specific entry"""
-    if 0 <= entry_index < len(st.session_state.food_log):
-        st.session_state.food_log[entry_index] = new_entry
-        st.success("Entry updated successfully!")
-        st.rerun()
 
 def create_pdf_report():
     """Create a PDF download of all food entries"""
     buffer = io.BytesIO()
-    
-    # For now, let's simplify PDF creation since reportlab might have issues on Cloud
-    # We'll create a basic text-based PDF
-    from reportlab.lib.pagesizes import letter
-    from reportlab.pdfgen import canvas
-    
     c = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
     
@@ -58,21 +112,36 @@ def create_pdf_report():
     c.setFont("Helvetica", 12)
     c.drawString(100, height - 130, f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     
-    # Simple data listing
+    # Table headers
     y_position = height - 170
+    headers = ["Date", "Category", "Food", "Beverage", "Protein (g)"]
+    col_positions = [50, 120, 220, 350, 450]
+    
     c.setFont("Helvetica-Bold", 10)
-    c.drawString(100, y_position, "Your Food Entries:")
+    for i, header in enumerate(headers):
+        c.drawString(col_positions[i], y_position, header)
+    
     y_position -= 20
     
+    # Data rows
+    entries = get_all_entries()
     c.setFont("Helvetica", 9)
-    for entry in st.session_state.food_log:
-        if y_position < 100:
+    for entry in entries:
+        if y_position < 100:  # New page if needed
             c.showPage()
             y_position = height - 100
+            # Redraw headers on new page
+            c.setFont("Helvetica-Bold", 10)
+            for i, header in enumerate(headers):
+                c.drawString(col_positions[i], y_position, header)
+            y_position -= 20
             c.setFont("Helvetica", 9)
         
-        entry_text = f"{entry['date']} - {entry['category']}: {entry['food']} | {entry['beverage']} | {entry.get('protein', 0)}g protein"
-        c.drawString(100, y_position, entry_text[:80])  # Limit length
+        c.drawString(col_positions[0], y_position, entry['date'])
+        c.drawString(col_positions[1], y_position, entry['category'])
+        c.drawString(col_positions[2], y_position, entry['food'][:30])
+        c.drawString(col_positions[3], y_position, entry['beverage'][:20])
+        c.drawString(col_positions[4], y_position, str(entry.get('protein', 0)))
         y_position -= 15
     
     c.save()
@@ -81,14 +150,15 @@ def create_pdf_report():
 
 def transform_to_daily_table():
     """Transform data into your desired table format"""
-    if not st.session_state.food_log:
+    entries = get_all_entries()
+    if not entries:
         return pd.DataFrame()
     
     daily_data = []
-    dates = sorted(set(entry['date'] for entry in st.session_state.food_log), reverse=True)
+    dates = sorted(set(entry['date'] for entry in entries), reverse=True)
     
     for date in dates:
-        day_entries = [entry for entry in st.session_state.food_log if entry['date'] == date]
+        day_entries = [entry for entry in entries if entry['date'] == date]
         
         day_row = {
             'Date': date,
@@ -122,10 +192,11 @@ def transform_to_daily_table():
 
 def create_protein_charts():
     """Create protein intake visualization"""
-    if not st.session_state.food_log:
+    entries = get_all_entries()
+    if not entries:
         return None, None, None
     
-    df = pd.DataFrame(st.session_state.food_log)
+    df = pd.DataFrame(entries)
     df['date'] = pd.to_datetime(df['date'])
     
     daily_protein = df.groupby('date')['protein'].sum().reset_index()
@@ -162,16 +233,17 @@ current_page = st.session_state.current_page
 if current_page == "Dashboard":
     st.header("📊 Dashboard")
     
-    if not st.session_state.food_log:
+    entries = get_all_entries()
+    if not entries:
         st.info("No entries yet! Add some food entries first.")
     else:
         # Key metrics in beautiful cards
         st.subheader("📈 Overview")
         col1, col2, col3, col4 = st.columns(4)
         
-        total_entries = len(st.session_state.food_log)
-        unique_dates = len(set(entry['date'] for entry in st.session_state.food_log))
-        total_protein = sum(entry.get('protein', 0) for entry in st.session_state.food_log)
+        total_entries = len(entries)
+        unique_dates = len(set(entry['date'] for entry in entries))
+        total_protein = sum(entry.get('protein', 0) for entry in entries)
         avg_daily_protein = total_protein / unique_dates if unique_dates > 0 else 0
         
         with col1:
@@ -220,7 +292,7 @@ if current_page == "Dashboard":
         
         # Recent entries in a proper table
         st.subheader("📋 Recent Entries")
-        recent_entries = st.session_state.food_log[-10:]  # Last 10 entries
+        recent_entries = entries[:10]  # First 10 entries (already sorted by date DESC)
         
         # Create a DataFrame for the recent entries table
         recent_df = pd.DataFrame(recent_entries)
@@ -238,7 +310,7 @@ if current_page == "Dashboard":
         
         # Display the table with better styling
         st.dataframe(
-            display_df.iloc[::-1],  # Reverse to show newest first
+            display_df,
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -269,13 +341,13 @@ if current_page == "Dashboard":
         with col2:
             # Recent activity
             today = datetime.date.today()
-            today_entries = [entry for entry in recent_entries 
+            today_entries = [entry for entry in entries 
                            if datetime.datetime.strptime(entry['date'], '%Y-%m-%d').date() == today]
             st.info(f"**Today's entries:** {len(today_entries)}")
             
             # Weekly summary
             week_ago = today - datetime.timedelta(days=7)
-            recent_week_entries = [entry for entry in st.session_state.food_log 
+            recent_week_entries = [entry for entry in entries 
                                  if datetime.datetime.strptime(entry['date'], '%Y-%m-%d').date() >= week_ago]
             st.info(f"**Last 7 days:** {len(recent_week_entries)} entries")
 
@@ -313,7 +385,7 @@ elif current_page == "Add Entry":
                         "created_at": datetime.datetime.now().isoformat()
                     }
                     
-                    st.session_state.food_log.append(new_entry)
+                    add_entry(new_entry)
                     st.success("✅ Entry added successfully!")
                     st.balloons()
                 else:
@@ -323,7 +395,8 @@ elif current_page == "Add Entry":
 elif current_page == "View & Edit Entries":
     st.header("View & Manage Entries")
     
-    if not st.session_state.food_log:
+    entries = get_all_entries()
+    if not entries:
         st.info("No entries yet! Add some food entries first.")
     else:
         col1, col2, col3 = st.columns(3)
@@ -376,23 +449,23 @@ elif current_page == "View & Edit Entries":
         st.markdown("---")
         st.subheader("Manage Individual Entries")
         
-        for i, entry in enumerate(st.session_state.food_log):
+        for entry in entries:
             with st.expander(f"{entry['date']} - {entry['category']}: {entry['food']}", expanded=False):
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
-                    with st.form(f"edit_form_{i}"):
+                    with st.form(f"edit_form_{entry['id']}"):
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            edit_date = st.date_input("Date", datetime.datetime.strptime(entry['date'], '%Y-%m-%d').date(), key=f"date_{i}")
-                            edit_category = st.selectbox("Category", ["Breakfast", "Lunch", "Snacks", "Dinner"], index=["Breakfast", "Lunch", "Snacks", "Dinner"].index(entry['category']), key=f"cat_{i}")
-                            edit_protein = st.number_input("Protein (g)", value=entry.get('protein', 0), key=f"prot_{i}")
+                            edit_date = st.date_input("Date", datetime.datetime.strptime(entry['date'], '%Y-%m-%d').date(), key=f"date_{entry['id']}")
+                            edit_category = st.selectbox("Category", ["Breakfast", "Lunch", "Snacks", "Dinner"], index=["Breakfast", "Lunch", "Snacks", "Dinner"].index(entry['category']), key=f"cat_{entry['id']}")
+                            edit_protein = st.number_input("Protein (g)", value=entry.get('protein', 0), key=f"prot_{entry['id']}")
                         
                         with col2:
-                            edit_food = st.text_input("Food", value=entry['food'], key=f"food_{i}")
-                            edit_beverage = st.text_input("Beverage", value=entry['beverage'], key=f"bev_{i}")
-                            edit_notes = st.text_area("Notes", value=entry.get('notes', ''), key=f"notes_{i}")
+                            edit_food = st.text_input("Food", value=entry['food'], key=f"food_{entry['id']}")
+                            edit_beverage = st.text_input("Beverage", value=entry['beverage'], key=f"bev_{entry['id']}")
+                            edit_notes = st.text_area("Notes", value=entry.get('notes', ''), key=f"notes_{entry['id']}")
                         
                         col1, col2 = st.columns(2)
                         with col1:
@@ -406,42 +479,49 @@ elif current_page == "View & Edit Entries":
                                     "notes": edit_notes,
                                     "created_at": entry.get('created_at', datetime.datetime.now().isoformat())
                                 }
-                                edit_entry(i, updated_entry)
+                                update_entry(entry['id'], updated_entry)
+                                st.success("Entry updated successfully!")
+                                st.rerun()
                         
                         with col2:
                             if st.form_submit_button("🗑️ Delete Entry", use_container_width=True):
-                                delete_entry(i)
+                                delete_entry(entry['id'])
+                                st.success(f"Deleted entry: {entry['food']}")
+                                st.rerun()
         
         st.markdown("---")
         st.subheader("🚨 Danger Zone")
         
         with st.expander("Clear All Entries"):
             st.warning("This will permanently delete ALL your food entries. This action cannot be undone!")
-            st.write(f"**Total entries that will be deleted:** {len(st.session_state.food_log)}")
+            st.write(f"**Total entries that will be deleted:** {len(entries)}")
             
             if st.button("🗑️ Yes, Clear All Entries", type="primary", use_container_width=True):
                 clear_all_entries()
+                st.success("All entries cleared successfully!")
+                st.rerun()
 
 # Protein Analytics Page
 elif current_page == "Protein Analytics":
     st.header("📈 Protein Intake Analytics")
     
-    if not st.session_state.food_log:
+    entries = get_all_entries()
+    if not entries:
         st.info("No entries yet! Add some food entries first.")
     else:
         daily_protein, weekly_protein, category_protein = create_protein_charts()
         
         col1, col2, col3 = st.columns(3)
-        total_protein = sum(entry.get('protein', 0) for entry in st.session_state.food_log)
-        avg_daily = total_protein / len(set(entry['date'] for entry in st.session_state.food_log))
+        total_protein = sum(entry.get('protein', 0) for entry in entries)
+        unique_dates = len(set(entry['date'] for entry in entries))
+        avg_daily = total_protein / unique_dates if unique_dates > 0 else 0
         
         with col1:
             st.metric("Total Protein", f"{total_protein:.0f} g")
         with col2:
             st.metric("Average Daily", f"{avg_daily:.1f} g")
         with col3:
-            days_count = len(set(entry['date'] for entry in st.session_state.food_log))
-            st.metric("Days Tracked", days_count)
+            st.metric("Days Tracked", unique_dates)
         
         col1, col2 = st.columns(2)
         
@@ -489,10 +569,11 @@ elif current_page == "Protein Analytics":
 # Enhanced Statistics in sidebar
 st.sidebar.markdown("---")
 st.sidebar.header("Statistics")
-if st.session_state.food_log:
-    total_entries = len(st.session_state.food_log)
-    unique_dates = len(set(entry['date'] for entry in st.session_state.food_log))
-    total_protein = sum(entry.get('protein', 0) for entry in st.session_state.food_log)
+entries = get_all_entries()
+if entries:
+    total_entries = len(entries)
+    unique_dates = len(set(entry['date'] for entry in entries))
+    total_protein = sum(entry.get('protein', 0) for entry in entries)
     avg_daily_protein = total_protein / unique_dates if unique_dates > 0 else 0
     
     st.sidebar.metric("Total Entries", total_entries)
@@ -501,3 +582,6 @@ if st.session_state.food_log:
     st.sidebar.metric("Avg Daily Protein", f"{avg_daily_protein:.1f} g")
 else:
     st.sidebar.info("Add entries to see stats!")
+
+# Close database connection when done
+conn.close()
