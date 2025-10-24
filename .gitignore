@@ -1,0 +1,13 @@
+# Ignore food tracker data
+food_log.json
+
+# Ignore other data files
+*.json
+*.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Streamlit cache
+.streamlit/
