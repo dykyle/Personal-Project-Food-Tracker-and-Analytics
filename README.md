@@ -41,3 +41,23 @@ A sleek and powerful Streamlit web application for tracking daily meals, beverag
    ```bash
    git clone [https://github.com/dykyle/food-tracker.git](https://github.com/dykyle/Personal-Project-Food-Tracker-and-Analytics.git)
    cd food-tracker
+
+2. **Create a virtual environment (recommended)
+   ```bash
+   python -m venv
+   source venv/bin/activate   # On Windows: venv\Scripts\activate
+
+3. **Instal Dependencies**
+   ```bash
+   pip install -r requirements.txt
+   # You can also do py -m install -r requirements.txt
+
+4. **Run the Application**
+   ```bash
+   streamlit run FT/food_tracker.py
+
+   # You can also do py -m streamlit run FT/food_tracker.py
+
+5. **Open your browser**
+   - The app will automatically open at http://localhost:8501
+   - If not, manually navigate to the URL shown in the terminal
