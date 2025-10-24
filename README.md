@@ -29,6 +29,34 @@ A sleek and powerful Streamlit web application for tracking daily meals, beverag
 - **PDF Reports**: Generate printable reports of your food logs
 - **Local Storage**: JSON-based database that persists between sessions
 
+## 🎯 Usage
+- **Adding Food Entries**
+  1. Navigate to "Add Entry" in the sidebar
+  2. Fill in the date, meal category, food items, beverages, and protein content
+  3. Click "Add Food Entry" to save
+
+- **Viewing & Managing Data**
+  1. Use "View & Edit Entries" to see all your data in a organized table
+  2. Expand any entry to edit or delete it
+  3. Use the download buttons to export your data
+ 
+- **Analyzing Progress**
+  1. Visit "Protein Analytics" to see interactive charts
+  2. Set protein goals and track your progress
+  3. Monitor trends in your eating habits
+
+## 🔧 Configuration
+- **Data Storage**
+  - All data is stored locally in food_log.json
+  - The data folder is ignored by Git for privacy
+  - Your personal food data remains on your machine
+ 
+- **Customization**
+You can easily modify:
+   - Protein goals in the Analytics page
+   - Meal categories in the Add Entry form
+   - Color schemes in the Plotly charts
+
 ## 🛠️ Installation
 
 ### Prerequisites
