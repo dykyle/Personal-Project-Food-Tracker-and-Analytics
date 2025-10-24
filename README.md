@@ -39,5 +39,5 @@ A sleek and powerful Streamlit web application for tracking daily meals, beverag
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/food-tracker.git
+   git clone https://github.com/dykyle/food-tracker.git
    cd food-tracker
